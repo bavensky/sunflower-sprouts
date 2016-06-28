@@ -5,11 +5,19 @@
 //#include <TimeLib.h>
 #include <ESP8266WiFi.h>
 //#include <WiFiUdp.h>
+#include <Wire.h>
+#include <MCP3221.h>
+#include "RTClib.h"
 
 File datalog;
 
+RTC_DS1307 rtc;
+char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+
 #define DHTPIN 16     // what pin we're connected to
 #define DHTTYPE DHT22   // DHT 22  (AM2302)
+
+#define ADC A0
 
 #define DEBUG
 #define DEBUG_PRINTER Serial
@@ -20,6 +28,10 @@ File datalog;
 #define DEBUG_PRINT(...) {}
 #define DEBUG_PRINTLN(...) {}
 #endif
+
+byte i2cAddress = 0x4D;
+const int I2CadcVRef = 4948;
+MCP3221 i2cADC(i2cAddress, I2CadcVRef);
 
 const char* ssid     = "@ESPertAP_001";
 const char* password = "espertap";
@@ -47,73 +59,94 @@ void setup() {
   Serial.begin(115200);
   delay(10);
 
-//  if (!SD.begin(2)) {
-//    Serial.println("initialization failed!");
-//    return;
-//  }
+  //  if (!SD.begin(2)) {
+  //    Serial.println("initialization failed!");
+  //    return;
+  //  }
 
   pinMode(DHTPIN, INPUT_PULLUP);
   delay(100);
   initDht(&dht, DHTPIN, DHTTYPE);
 
   // connectWifi();
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
+  //  while (WiFi.status() != WL_CONNECTED) {
+  //    delay(500);
+  //    Serial.print(".");
+  //  }
 
-//  Serial.print("IP number assigned by DHCP is ");
-//  Serial.println(WiFi.localIP());
-//  Serial.println("Starting UDP");
-//  Udp.begin(localPort);
-//  Serial.print("Local port: ");
-//  Serial.println(Udp.localPort());
-//  Serial.println("waiting for sync");
-//  setSyncProvider(getNtpTime);
-//  setSyncInterval(300);
+  //  if (! rtc.begin()) {
+  //    Serial.println("Couldn't find RTC");
+  //    while (1);
+  //  }
 
-//  datalog = SD.open("datalog.csv", FILE_WRITE);
-//  if (datalog) {
-//    datalog.println("Date, Time, Temp, Humid, Moi");
-//    datalog.close();
-//    delay(100);
-//  }
+  //  if (! rtc.isrunning()) {
+  //    Serial.println("RTC is NOT running!");
+  rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+  //  }
+
+  //  Serial.print("IP number assigned by DHCP is ");
+  //  Serial.println(WiFi.localIP());
+  //  Serial.println("Starting UDP");
+  //  Udp.begin(localPort);
+  //  Serial.print("Local port: ");
+  //  Serial.println(Udp.localPort());
+  //  Serial.println("waiting for sync");
+  //  setSyncProvider(getNtpTime);
+  //  setSyncInterval(300);
+
+  //  datalog = SD.open("datalog.csv", FILE_WRITE);
+  //  if (datalog) {
+  //    datalog.println("Date, Time, Temp, Humid, Moist, Lux");
+  //    datalog.close();
+  //    delay(100);
+  //  }
 }
 
 time_t prevDisplay = 0;
 
 void loop() {
+  DateTime now = rtc.now();
   static float t_dht;
   static float h_dht;
-  moi = map(analogRead(A0), 600, 800, 100, 0);
-//  datalog = SD.open("datalog.csv", FILE_WRITE);
-//  if (datalog) {
-    readDht(dht, &t_dht, &h_dht);
-//    uploadThingsSpeak(t_dht, h_dht, moi);
-//    datalog.print(day());
-//    datalog.print("/");
-//    datalog.print(month());
-//    datalog.print("/");
-//    datalog.print(year());
-//    datalog.print(",");
-//    datalog.print(hour());
-//    datalog.print(":");
-//    datalog.print(minute());
-//    datalog.print(":");
-//    datalog.print(second());
-//    datalog.print(",");
-//    datalog.print(t_dht);
-//    datalog.print(",");
-//    datalog.print(h_dht);
-//    datalog.print(",");
-//    datalog.println(moi);
-//    datalog.close();
 
-//    delay(20 * 1000);
-    reconnectWifiIfLinkDown();
-//    digitalClockDisplay();
-    Serial.println("done.");
-//  }
+  moi = map(analogRead(ADC), 0, 340, 8, 3.5);
+
+  int adcAVG = i2cADC.calcRollingAVG();
+
+  //  datalog = SD.open("datalog.csv", FILE_WRITE);
+  //  if (datalog) {
+  //    readDht(dht, &t_dht, &h_dht);
+  //    uploadThingsSpeak(t_dht, h_dht, moi);
+  datalog.print(now.day());
+  datalog.print("/");
+  datalog.print(now.month());
+  datalog.print("/");
+  datalog.print(now.year());
+  datalog.print(",");
+  datalog.print(now.hour());
+  datalog.print(":");
+  datalog.print(now.minute());
+  datalog.print(":");
+  datalog.print(now.second());
+  datalog.print(",");
+  datalog.print(t_dht);
+  datalog.print(",");
+  datalog.print(h_dht);
+  datalog.print(",");
+  datalog.print(moi);
+  datalog.print(",");
+  datalog.println(adcAVG);
+  datalog.close();
+  delay(20 * 1000);
+
+  Serial.print("Time = ");
+  Serial.print(now.day());
+  Serial.print(now.month());
+  Serial.print(now.year());
+  Serial.println();
+  //    reconnectWifiIfLinkDown();
+  //    Serial.println("done.");
+  //  }
 }
 
 void reconnectWifiIfLinkDown() {
@@ -161,7 +194,7 @@ void initDht(DHT **dht, uint8_t pin, uint8_t dht_type) {
 
   *dht = new DHT(pin, dht_type, 21);
   (*dht)->begin();
-  DEBUG_PRINTLN(F("DHTxx test!"))  ;
+  DEBUG_PRINTLN(F("DHTxx test!"));
 }
 
 void uploadThingsSpeak(float t, float h, float moi) {
