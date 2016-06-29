@@ -115,7 +115,7 @@ void loop() {
 
   //  datalog = SD.open("datalog.csv", FILE_WRITE);
   //  if (datalog) {
-  //    readDht(dht, &t_dht, &h_dht);
+  readDht(dht, &t_dht, &h_dht);
   //    uploadThingsSpeak(t_dht, h_dht, moi);
   datalog.print(now.day());
   datalog.print("/");
